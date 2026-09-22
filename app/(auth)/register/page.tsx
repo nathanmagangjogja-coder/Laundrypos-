@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
-import { registerMitra } from '@/app/actions/mitra-accounts';
+import { registerMitra } from '@/app/(dashboard)/actions/mitra-accounts';
 import {
   Loader2, ArrowRight, Shirt, CheckCircle2, Building2, User,
   Mail, Phone, MapPin, Sparkles,

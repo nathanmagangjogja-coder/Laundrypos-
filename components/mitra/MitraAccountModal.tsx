@@ -9,7 +9,7 @@ import {
   resetMitraPassword,
   setMitraAccountEnabled,
   updateMitraAccount,
-} from '@/app/actions/mitra-accounts';
+} from '@/app/(dashboard)/actions/mitra-accounts';
 import {
   Dialog,
   DialogContent,
