@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { getCurrentUser } from '@/lib/server-auth';
+export const dynamic = 'force-dynamic';
 
 // ─── Rentang tanggal berdasarkan periode ────────────────────────────────────
 function periodRange(period: string): { from: string | null; to: string | null } {
