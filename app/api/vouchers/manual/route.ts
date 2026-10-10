@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { getCurrentUser } from '@/lib/server-auth';
-import { generateVoucherCode } from '@/lib/loyalty-store';
+import { generateVoucherCode } from '@/lib/voucher-code';
 import type { Voucher } from '@/types';
 
 export async function POST(req: Request) {

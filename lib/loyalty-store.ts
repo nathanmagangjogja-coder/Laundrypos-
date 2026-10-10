@@ -4,33 +4,27 @@
  */
 
 import { createSupabaseBrowser } from '@/lib/supabase/client';
-import type {
-  Voucher,
-  LoyaltyPoints,
-  VoucherRedemption,
-} from '@/types';
+import { generateVoucherCode } from '@/lib/voucher-code';
+import type { Voucher, LoyaltyPoints } from '@/types';
 
-const supabase = createSupabaseBrowser();
+// Re-export agar file lain yang masih import dari loyalty-store tetap jalan
+export { generateVoucherCode };
+
+// Client dibuat secara lazy (saat dipanggil), bukan saat file di-import,
+// supaya build di Vercel tidak error ketika env belum tersedia.
+let _supabase: ReturnType<typeof createSupabaseBrowser> | null = null;
+function getSupabase() {
+  if (!_supabase) _supabase = createSupabaseBrowser();
+  return _supabase;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Voucher Generator
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function generateVoucherCode(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-
-  let code = 'LDRY-';
-
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-
-  return code;
-}
-
 export async function generateUniqueCode(): Promise<string> {
+  const supabase = getSupabase();
   let code = generateVoucherCode();
-
   let exists = true;
 
   while (exists) {
@@ -55,7 +49,7 @@ export async function generateUniqueCode(): Promise<string> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getVouchers(): Promise<Voucher[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('vouchers')
     .select('*')
     .order('created_at', { ascending: false });
@@ -71,7 +65,7 @@ export async function getVouchers(): Promise<Voucher[]> {
 export async function getVouchersByCustomer(
   customerId: string
 ): Promise<Voucher[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('vouchers')
     .select('*')
     .eq('customer_id', customerId)
@@ -88,7 +82,7 @@ export async function getVouchersByCustomer(
 export async function getActiveVouchers(): Promise<Voucher[]> {
   const now = new Date().toISOString();
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('vouchers')
     .select('*')
     .eq('is_used', false)
@@ -106,7 +100,7 @@ export async function getActiveVouchers(): Promise<Voucher[]> {
 export async function getVoucherByCode(
   code: string
 ): Promise<Voucher | undefined> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('vouchers')
     .select('*')
     .eq('code', code.toUpperCase().trim())
@@ -136,31 +130,19 @@ export async function validateVoucher(
   const voucher = await getVoucherByCode(code);
 
   if (!voucher) {
-    return {
-      valid: false,
-      error: 'Kode voucher tidak ditemukan',
-    };
+    return { valid: false, error: 'Kode voucher tidak ditemukan' };
   }
 
   if (voucher.is_used) {
-    return {
-      valid: false,
-      error: 'Voucher sudah digunakan',
-    };
+    return { valid: false, error: 'Voucher sudah digunakan' };
   }
 
   if (voucher.customer_id !== customerId) {
-    return {
-      valid: false,
-      error: 'Voucher bukan milik customer ini',
-    };
+    return { valid: false, error: 'Voucher bukan milik customer ini' };
   }
 
   if (voucher.expired_at < new Date().toISOString()) {
-    return {
-      valid: false,
-      error: 'Voucher sudah kadaluarsa',
-    };
+    return { valid: false, error: 'Voucher sudah kadaluarsa' };
   }
 
   if (orderTotal < voucher.minimum_order) {
@@ -170,10 +152,7 @@ export async function validateVoucher(
     };
   }
 
-  return {
-    valid: true,
-    voucher,
-  };
+  return { valid: true, voucher };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,6 +163,7 @@ export async function redeemVoucher(
   voucherId: string,
   transactionId: string
 ) {
+  const supabase = getSupabase();
   const usedAt = new Date().toISOString();
 
   const { data: voucher } = await supabase
@@ -202,23 +182,15 @@ export async function redeemVoucher(
     .eq('id', voucherId);
 
   if (voucher) {
-    await supabase
-      .from('voucher_redemptions')
-      .insert({
-        id: crypto.randomUUID(),
-
-        voucher_id: voucherId,
-
-        voucher_code: voucher.code,
-
-        customer_id: voucher.customer_id,
-
-        transaction_id: transactionId,
-
-        discount_applied: voucher.discount_amount,
-
-        redeemed_at: usedAt,
-      });
+    await supabase.from('voucher_redemptions').insert({
+      id: crypto.randomUUID(),
+      voucher_id: voucherId,
+      voucher_code: voucher.code,
+      customer_id: voucher.customer_id,
+      transaction_id: transactionId,
+      discount_applied: voucher.discount_amount,
+      redeemed_at: usedAt,
+    });
   }
 }
 
@@ -226,12 +198,10 @@ export async function redeemVoucher(
 // Loyalty Points
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Ganti fungsi getLoyaltyPoints dan getTotalPoints
-
 export async function getLoyaltyPointsHistory(
   customerId: string
 ): Promise<LoyaltyPoints[]> {
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('loyalty_points')
     .select('*')
     .eq('customer_id', customerId)
@@ -241,7 +211,7 @@ export async function getLoyaltyPointsHistory(
 }
 
 export async function getTotalPoints(customerId: string): Promise<number> {
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('loyalty_points')
     .select('points, type')
     .eq('customer_id', customerId);
@@ -252,12 +222,10 @@ export async function getTotalPoints(customerId: string): Promise<number> {
     return sum + (r.type === 'redeem' ? -Number(r.points) : Number(r.points));
   }, 0);
 }
-// ─────────────────────────────────────────────────────────────────────────────
-// Award Points
-// ─────────────────────────────────────────────────────────────────────────────
 
-// Ganti fungsi awardPoints di lib/loyalty-store.ts
-// HAPUS semua import admin dan logika server-side di sini
+// ─────────────────────────────────────────────────────────────────────────────
+// Award Points (lewat API server)
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function awardPoints(
   customerId: string,
@@ -284,6 +252,7 @@ export async function awardPoints(
     return 0;
   }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Analytics
 // ─────────────────────────────────────────────────────────────────────────────
@@ -305,6 +274,7 @@ export interface LoyaltyAnalytics {
 }
 
 export async function getLoyaltyAnalytics(): Promise<LoyaltyAnalytics> {
+  const supabase = getSupabase();
   const vouchers = await getVouchers();
 
   const { data: pointsData } = await supabase
@@ -318,31 +288,27 @@ export async function getLoyaltyAnalytics(): Promise<LoyaltyAnalytics> {
   const now = new Date().toISOString();
 
   const totalVouchers = vouchers.length;
-
   const usedVouchers = vouchers.filter(v => v.is_used).length;
-
   const expiredVouchers = vouchers.filter(
     v => !v.is_used && v.expired_at < now
   ).length;
-
   const activeVouchers = vouchers.filter(
     v => !v.is_used && v.expired_at >= now
   ).length;
 
-  const totalDiscountGiven =
-    (redemptions ?? []).reduce(
-      (s, r) => s + r.discount_applied,
-      0
-    );
+  const totalDiscountGiven = (redemptions ?? []).reduce(
+    (s, r) => s + r.discount_applied,
+    0
+  );
 
   const redemptionRate =
-    totalVouchers > 0
-      ? Math.round((usedVouchers / totalVouchers) * 100)
-      : 0;
+    totalVouchers > 0 ? Math.round((usedVouchers / totalVouchers) * 100) : 0;
 
-  // Aggregate points by customer from transaction-based data
-  const customerPointsMap = new Map<string, { name: string; total: number; lifetime: number }>();
-  
+  const customerPointsMap = new Map<
+    string,
+    { name: string; total: number; lifetime: number }
+  >();
+
   (pointsData || []).forEach(record => {
     const key = record.customer_id;
     if (!customerPointsMap.has(key)) {
@@ -352,14 +318,17 @@ export async function getLoyaltyAnalytics(): Promise<LoyaltyAnalytics> {
         lifetime: 0,
       });
     }
-    
+
     const existing = customerPointsMap.get(key)!;
     const pointValue = record.type === 'redeem' ? -record.points : record.points;
     existing.total += pointValue;
     existing.lifetime += Math.abs(record.points);
   });
 
-  const totalPointsAwarded = Array.from(customerPointsMap.values()).reduce((s, p) => s + p.lifetime, 0);
+  const totalPointsAwarded = Array.from(customerPointsMap.values()).reduce(
+    (s, p) => s + p.lifetime,
+    0
+  );
 
   const topCustomers = Array.from(customerPointsMap.entries())
     .map(([customerId, data]) => ({
@@ -379,17 +348,16 @@ export async function getLoyaltyAnalytics(): Promise<LoyaltyAnalytics> {
     }));
 
   return {
-  totalVouchers,
-  activeVouchers,
-  usedVouchers,
-  expiredVouchers,
-  totalDiscountGiven,
-  redemptionRate,
-  totalPointsAwarded,
-  topCustomers,
+    totalVouchers,
+    activeVouchers,
+    usedVouchers,
+    expiredVouchers,
+    totalDiscountGiven,
+    redemptionRate,
+    totalPointsAwarded,
+    topCustomers,
   };
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WhatsApp Voucher Message
@@ -399,9 +367,7 @@ export function buildVoucherWaMessage(
   customerName: string,
   voucher: Voucher
 ): string {
-  const expDate = new Date(
-    voucher.expired_at
-  ).toLocaleDateString('id-ID', {
+  const expDate = new Date(voucher.expired_at).toLocaleDateString('id-ID', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -421,7 +387,7 @@ ${voucher.title}
 Rp ${voucher.discount_amount.toLocaleString('id-ID')}
 
 📅 Berlaku sampai:
-${expDate}    
+${expDate}
 
 Gunakan pada transaksi berikutnya 🙏
 
